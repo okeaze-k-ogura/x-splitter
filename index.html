@@ -1,0 +1,1074 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TapVertical - 縦4分割画像ジェネレーター for X</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        'x-dark': '#000000',
+                        'x-darker': '#16181c',
+                        'x-gray': '#71767b',
+                        'x-blue': '#1d9bf0',
+                        'x-border': '#2f3336',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @keyframes catSplit {
+            0%, 100% { transform: translateY(0); }
+            25% { transform: translateY(-10px) rotate(-5deg); }
+            50% { transform: translateY(0); }
+            75% { transform: translateY(-10px) rotate(5deg); }
+        }
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes pulse-glow {
+            0%, 100% { box-shadow: 0 0 5px rgba(29, 155, 240, 0.5); }
+            50% { box-shadow: 0 0 20px rgba(29, 155, 240, 0.8); }
+        }
+        .cat-split { animation: catSplit 1s ease-in-out infinite; }
+        .fade-in-up { animation: fadeInUp 0.5s ease-out; }
+        .pulse-glow { animation: pulse-glow 2s ease-in-out infinite; }
+        .drop-zone-active { background: rgba(29, 155, 240, 0.1) !important; border-color: #1d9bf0 !important; }
+        .preview-item:hover { transform: scale(1.02); }
+        .slider-thumb::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #1d9bf0;
+            cursor: pointer;
+            box-shadow: 0 0 10px rgba(29, 155, 240, 0.5);
+        }
+        .slider-thumb::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #1d9bf0;
+            cursor: pointer;
+            border: none;
+        }
+        .custom-scrollbar::-webkit-scrollbar { width: 8px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #16181c; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #2f3336; border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #404448; }
+        .line-preview { height: 4px; width: 100%; }
+        .heart-pattern {
+            background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='%23ff6b9d'%3E%3Cpath d='M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z'/%3E%3C/svg%3E") repeat-x center;
+        }
+        .star-pattern {
+            background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='%23ffd700'%3E%3Cpath d='M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z'/%3E%3C/svg%3E") repeat-x center;
+        }
+    </style>
+</head>
+<body class="dark bg-x-dark min-h-screen text-white custom-scrollbar">
+    <!-- Main Container -->
+    <div class="max-w-7xl mx-auto px-4 py-8">
+        <!-- Header -->
+        <header class="text-center mb-8 fade-in-up">
+            <h1 class="text-4xl font-bold mb-2">
+                <span class="text-x-blue">Tap</span><span class="text-white">Vertical</span>
+            </h1>
+            <p class="text-x-gray">Xで映える縦長4分割画像を簡単作成</p>
+            <p class="text-xs text-x-gray mt-1">2026年最新トレンド対応</p>
+        </header>
+
+        <!-- Main Content -->
+        <div class="grid lg:grid-cols-2 gap-8">
+            <!-- Left Panel - Upload & Settings -->
+            <div class="space-y-6">
+                <!-- Drop Zone -->
+                <div id="dropZone" class="border-2 border-dashed border-x-border rounded-2xl p-12 text-center cursor-pointer transition-all duration-300 hover:border-x-blue hover:bg-x-darker/50 relative overflow-hidden">
+                    <input type="file" id="fileInput" accept="image/*" class="hidden">
+                    <div id="dropContent">
+                        <div class="text-6xl mb-4">🐱</div>
+                        <p class="text-xl font-medium mb-2">画像をドラッグ＆ドロップ</p>
+                        <p class="text-x-gray mb-4">または クリックして選択</p>
+                        <p class="text-xs text-x-gray">対応形式: PNG, JPG, WebP (最大20MB)</p>
+                    </div>
+                    <div id="loadingContent" class="hidden">
+                        <div class="flex justify-center items-end space-x-1 mb-4">
+                            <div class="text-4xl cat-split" style="animation-delay: 0s;">🐱</div>
+                            <div class="text-4xl cat-split" style="animation-delay: 0.2s;">🐱</div>
+                            <div class="text-4xl cat-split" style="animation-delay: 0.4s;">🐱</div>
+                            <div class="text-4xl cat-split" style="animation-delay: 0.6s;">🐱</div>
+                        </div>
+                        <p class="text-x-gray">にゃんこを分割中...</p>
+                    </div>
+                </div>
+
+                <!-- Image Info -->
+                <div id="imageInfo" class="hidden bg-x-darker rounded-xl p-4 fade-in-up">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-sm text-x-gray">読み込み画像</span>
+                        <button id="clearImage" class="text-red-400 hover:text-red-300 text-sm">× 削除</button>
+                    </div>
+                    <div class="grid grid-cols-3 gap-4 text-sm">
+                        <div>
+                            <p class="text-x-gray">サイズ</p>
+                            <p id="imgSize" class="font-medium">-</p>
+                        </div>
+                        <div>
+                            <p class="text-x-gray">解像度</p>
+                            <p id="imgDimensions" class="font-medium">-</p>
+                        </div>
+                        <div>
+                            <p class="text-x-gray">処理時間</p>
+                            <p id="processTime" class="font-medium">-</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Settings Panel -->
+                <div id="settingsPanel" class="hidden space-y-4 fade-in-up">
+                    <!-- Split Count -->
+                    <div class="bg-x-darker rounded-xl p-4">
+                        <h3 class="font-medium mb-3 flex items-center">
+                            <span class="mr-2">✂️</span> 分割数
+                        </h3>
+                        <div class="flex gap-2">
+                            <button class="split-btn flex-1 py-3 rounded-lg border border-x-border hover:border-x-blue transition-all" data-splits="3">
+                                3分割
+                            </button>
+                            <button class="split-btn flex-1 py-3 rounded-lg border-2 border-x-blue bg-x-blue/10 transition-all" data-splits="4">
+                                4分割 <span class="text-xs text-x-gray">(推奨)</span>
+                            </button>
+                            <button class="split-btn flex-1 py-3 rounded-lg border border-x-border hover:border-x-blue transition-all" data-splits="5">
+                                5分割
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Aspect Ratio -->
+                    <div class="bg-x-darker rounded-xl p-4">
+                        <h3 class="font-medium mb-3 flex items-center">
+                            <span class="mr-2">📐</span> アスペクト比調整
+                        </h3>
+                        <div class="space-y-3">
+                            <div class="flex items-center justify-between">
+                                <span class="text-sm text-x-gray">縦長最適化</span>
+                                <span id="aspectRatioDisplay" class="text-x-blue font-mono">9:32</span>
+                            </div>
+                            <input type="range" id="aspectRatio" min="20" max="50" value="28" class="w-full slider-thumb bg-x-border rounded-lg h-2 appearance-none">
+                            <div class="flex justify-between text-xs text-x-gray">
+                                <span>短め (9:20)</span>
+                                <span>長め (9:50)</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Split Position -->
+                    <div class="bg-x-darker rounded-xl p-4">
+                        <h3 class="font-medium mb-3 flex items-center">
+                            <span class="mr-2">📏</span> 分割位置調整
+                        </h3>
+                        <div id="splitSliders" class="space-y-3">
+                            <!-- Dynamic sliders will be inserted here -->
+                        </div>
+                        <button id="resetSplits" class="mt-3 text-sm text-x-blue hover:text-x-blue/80">↺ 均等分割にリセット</button>
+                    </div>
+
+                    <!-- Line Style -->
+                    <div class="bg-x-darker rounded-xl p-4">
+                        <h3 class="font-medium mb-3 flex items-center">
+                            <span class="mr-2">✨</span> 区切り線スタイル
+                        </h3>
+                        <div class="grid grid-cols-3 gap-2">
+                            <button class="line-btn p-3 rounded-lg border border-x-border hover:border-x-blue transition-all" data-line="none">
+                                <div class="line-preview bg-transparent"></div>
+                                <span class="text-xs mt-2 block">なし</span>
+                            </button>
+                            <button class="line-btn p-3 rounded-lg border-2 border-x-blue bg-x-blue/10 transition-all" data-line="black">
+                                <div class="line-preview bg-black"></div>
+                                <span class="text-xs mt-2 block">黒線</span>
+                            </button>
+                            <button class="line-btn p-3 rounded-lg border border-x-border hover:border-x-blue transition-all" data-line="white">
+                                <div class="line-preview bg-white"></div>
+                                <span class="text-xs mt-2 block">白線</span>
+                            </button>
+                            <button class="line-btn p-3 rounded-lg border border-x-border hover:border-x-blue transition-all" data-line="dotted">
+                                <div class="line-preview bg-white" style="background: repeating-linear-gradient(90deg, white 0px, white 4px, transparent 4px, transparent 8px);"></div>
+                                <span class="text-xs mt-2 block">ドット</span>
+                            </button>
+                            <button class="line-btn p-3 rounded-lg border border-x-border hover:border-x-blue transition-all" data-line="heart">
+                                <div class="line-preview heart-pattern"></div>
+                                <span class="text-xs mt-2 block">ハート</span>
+                            </button>
+                            <button class="line-btn p-3 rounded-lg border border-x-border hover:border-x-blue transition-all" data-line="star">
+                                <div class="line-preview star-pattern"></div>
+                                <span class="text-xs mt-2 block">スター</span>
+                            </button>
+                        </div>
+                        <div class="mt-3">
+                            <label class="text-sm text-x-gray">線の太さ: <span id="lineWidthDisplay">2px</span></label>
+                            <input type="range" id="lineWidth" min="1" max="10" value="2" class="w-full slider-thumb bg-x-border rounded-lg h-2 appearance-none mt-2">
+                        </div>
+                    </div>
+
+                    <!-- Gap Mode -->
+                    <div class="bg-x-darker rounded-xl p-4">
+                        <h3 class="font-medium mb-3 flex items-center">
+                            <span class="mr-2">📱</span> Xの隙間シミュレート
+                        </h3>
+                        <label class="flex items-center cursor-pointer">
+                            <input type="checkbox" id="gapMode" class="sr-only">
+                            <div class="relative w-11 h-6 bg-x-border rounded-full peer-focus:ring-4 peer-focus:ring-x-blue/20 peer transition-all">
+                                <div id="gapToggle" class="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-all"></div>
+                            </div>
+                            <span class="ml-3 text-sm">隙間を考慮して自動カット</span>
+                        </label>
+                        <p class="text-xs text-x-gray mt-2">※ X表示時の2pxの隙間を考慮して調整</p>
+                    </div>
+
+                    <!-- Fill Style -->
+                    <div class="bg-x-darker rounded-xl p-4">
+                        <h3 class="font-medium mb-3 flex items-center">
+                            <span class="mr-2">🎨</span> 余白の処理
+                        </h3>
+                        <div class="grid grid-cols-3 gap-2 mb-3">
+                            <button class="fill-btn p-2 rounded-lg border-2 border-x-blue bg-x-blue/10 text-sm transition-all" data-fill="blur">ブラー</button>
+                            <button class="fill-btn p-2 rounded-lg border border-x-border hover:border-x-blue text-sm transition-all" data-fill="solid">単色</button>
+                            <button class="fill-btn p-2 rounded-lg border border-x-border hover:border-x-blue text-sm transition-all" data-fill="gradient">グラデ</button>
+                        </div>
+                        <div id="solidColorPicker" class="hidden">
+                            <input type="color" id="fillColor" value="#000000" class="w-full h-10 rounded cursor-pointer">
+                        </div>
+                        <div id="gradientPicker" class="hidden grid grid-cols-2 gap-2">
+                            <input type="color" id="gradColor1" value="#1d9bf0" class="w-full h-10 rounded cursor-pointer">
+                            <input type="color" id="gradColor2" value="#7c3aed" class="w-full h-10 rounded cursor-pointer">
+                        </div>
+                    </div>
+
+                    <!-- Watermark -->
+                    <div class="bg-x-darker rounded-xl p-4">
+                        <h3 class="font-medium mb-3 flex items-center">
+                            <span class="mr-2">💧</span> ウォーターマーク
+                        </h3>
+                        <label class="flex items-center cursor-pointer">
+                            <input type="checkbox" id="watermark" checked class="sr-only">
+                            <div class="relative w-11 h-6 bg-x-blue rounded-full transition-all">
+                                <div id="watermarkToggle" class="absolute top-0.5 right-0.5 w-5 h-5 bg-white rounded-full transition-all"></div>
+                            </div>
+                            <span class="ml-3 text-sm">Made with TapVertical</span>
+                        </label>
+                    </div>
+
+                    <!-- Output Format -->
+                    <div class="bg-x-darker rounded-xl p-4">
+                        <h3 class="font-medium mb-3 flex items-center">
+                            <span class="mr-2">💾</span> 出力形式
+                        </h3>
+                        <div class="flex gap-2 mb-3">
+                            <button class="format-btn flex-1 py-2 rounded-lg border-2 border-x-blue bg-x-blue/10 text-sm transition-all" data-format="webp">WebP (推奨)</button>
+                            <button class="format-btn flex-1 py-2 rounded-lg border border-x-border hover:border-x-blue text-sm transition-all" data-format="jpeg">JPEG</button>
+                            <button class="format-btn flex-1 py-2 rounded-lg border border-x-border hover:border-x-blue text-sm transition-all" data-format="png">PNG</button>
+                        </div>
+                        <div>
+                            <label class="text-sm text-x-gray">品質: <span id="qualityDisplay">92%</span></label>
+                            <input type="range" id="quality" min="80" max="100" value="92" class="w-full slider-thumb bg-x-border rounded-lg h-2 appearance-none mt-2">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Panel - Preview & Export -->
+            <div class="space-y-6">
+                <!-- Original Image Preview -->
+                <div id="originalPreview" class="hidden bg-x-darker rounded-xl p-4 fade-in-up">
+                    <h3 class="font-medium mb-3">📷 元画像プレビュー</h3>
+                    <div class="relative">
+                        <canvas id="previewCanvas" class="w-full rounded-lg"></canvas>
+                        <div id="splitLines" class="absolute inset-0 pointer-events-none"></div>
+                    </div>
+                </div>
+
+                <!-- X Timeline Preview -->
+                <div id="timelinePreview" class="hidden bg-x-darker rounded-xl p-4 fade-in-up">
+                    <h3 class="font-medium mb-3">📱 Xタイムライン風プレビュー</h3>
+                    <div class="bg-x-dark rounded-xl p-4 border border-x-border">
+                        <!-- Tweet Header -->
+                        <div class="flex items-start mb-3">
+                            <div class="w-10 h-10 rounded-full bg-gradient-to-br from-x-blue to-purple-500 mr-3"></div>
+                            <div>
+                                <div class="flex items-center">
+                                    <span class="font-bold">あなた</span>
+                                    <svg class="w-4 h-4 ml-1 text-x-blue" fill="currentColor" viewBox="0 0 24 24"><path d="M22.5 12.5c0-1.58-.875-2.95-2.148-3.6.154-.435.238-.905.238-1.4 0-2.21-1.71-3.998-3.818-3.998-.47 0-.92.084-1.336.25C14.818 2.415 13.51 1.5 12 1.5s-2.816.917-3.437 2.25c-.415-.165-.866-.25-1.336-.25-2.11 0-3.818 1.79-3.818 4 0 .494.083.964.237 1.4-1.272.65-2.147 2.018-2.147 3.6 0 1.495.782 2.798 1.942 3.486-.02.17-.032.34-.032.514 0 2.21 1.708 4 3.818 4 .47 0 .92-.086 1.335-.25.62 1.334 1.926 2.25 3.437 2.25 1.512 0 2.818-.916 3.437-2.25.415.163.865.248 1.336.248 2.11 0 3.818-1.79 3.818-4 0-.174-.012-.344-.033-.513 1.158-.687 1.943-1.99 1.943-3.484zm-6.616-3.334l-4.334 6.5c-.145.217-.382.334-.625.334-.143 0-.288-.04-.416-.126l-.115-.094-2.415-2.415c-.293-.293-.293-.768 0-1.06s.768-.294 1.06 0l1.77 1.767 3.825-5.74c.23-.345.696-.436 1.04-.207.346.23.44.696.21 1.04z"/></svg>
+                                </div>
+                                <span class="text-x-gray text-sm">@you · たった今</span>
+                            </div>
+                        </div>
+                        <p class="mb-3">縦長画像で注目度UP！🔥 #TapVertical で作成</p>
+                        <!-- Images Grid -->
+                        <div id="timelineImages" class="grid grid-cols-4 gap-0.5 rounded-xl overflow-hidden">
+                            <!-- Dynamic preview images -->
+                        </div>
+                        <!-- Tweet Footer -->
+                        <div class="flex justify-between mt-3 text-x-gray">
+                            <span>💬 12</span>
+                            <span>🔁 48</span>
+                            <span>❤️ 256</span>
+                            <span>📊 1.2K</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Export Buttons -->
+                <div id="exportSection" class="hidden space-y-3 fade-in-up">
+                    <button id="downloadAll" class="w-full py-4 bg-x-blue hover:bg-x-blue/90 rounded-xl font-bold text-lg transition-all pulse-glow">
+                        📦 全画像をZIPでダウンロード
+                    </button>
+                    <div class="grid grid-cols-2 gap-3">
+                        <button id="downloadIndividual" class="py-3 bg-x-darker hover:bg-x-border rounded-xl font-medium transition-all border border-x-border">
+                            📥 個別ダウンロード
+                        </button>
+                        <button id="shareX" class="py-3 bg-x-darker hover:bg-x-border rounded-xl font-medium transition-all border border-x-border">
+                            🐦 Xでシェア
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Help Button -->
+                <button id="helpBtn" class="w-full py-3 bg-x-darker hover:bg-x-border rounded-xl font-medium transition-all border border-x-border">
+                    ❓ Xへの投稿方法を見る
+                </button>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <footer class="mt-12 text-center text-x-gray text-sm">
+            <p>Made with 💙 for X creators</p>
+            <p class="mt-1">© 2026 TapVertical - 縦長画像で差をつけろ！</p>
+        </footer>
+    </div>
+
+    <!-- Help Modal -->
+    <div id="helpModal" class="fixed inset-0 bg-black/80 z-50 hidden items-center justify-center p-4">
+        <div class="bg-x-darker rounded-2xl max-w-lg w-full p-6 fade-in-up">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-bold">📖 Xへの投稿方法</h2>
+                <button id="closeHelp" class="text-x-gray hover:text-white text-2xl">&times;</button>
+            </div>
+            <div class="space-y-4 text-sm">
+                <div class="flex items-start">
+                    <span class="bg-x-blue rounded-full w-6 h-6 flex items-center justify-center text-xs mr-3 flex-shrink-0">1</span>
+                    <p>ダウンロードした画像をすべて選択（4枚の場合は4枚とも）</p>
+                </div>
+                <div class="flex items-start">
+                    <span class="bg-x-blue rounded-full w-6 h-6 flex items-center justify-center text-xs mr-3 flex-shrink-0">2</span>
+                    <p><strong>PCブラウザ</strong>でXを開き、ツイート作成画面へ</p>
+                </div>
+                <div class="flex items-start">
+                    <span class="bg-x-blue rounded-full w-6 h-6 flex items-center justify-center text-xs mr-3 flex-shrink-0">3</span>
+                    <p>画像を<strong>番号順（1,2,3,4）でドラッグ＆ドロップ</strong></p>
+                </div>
+                <div class="flex items-start">
+                    <span class="bg-x-blue rounded-full w-6 h-6 flex items-center justify-center text-xs mr-3 flex-shrink-0">4</span>
+                    <p>画像が横並びになっていることを確認して投稿！🎉</p>
+                </div>
+                <div class="bg-x-border/50 rounded-lg p-3 mt-4">
+                    <p class="text-x-gray">💡 <strong>ポイント:</strong> スマホアプリからだと並び順が変わることがあるので、PCブラウザからの投稿がおすすめ！</p>
+                </div>
+            </div>
+            <button id="closeHelpBtn" class="w-full mt-6 py-3 bg-x-blue rounded-xl font-medium">わかった！</button>
+        </div>
+    </div>
+
+    <!-- Image Zoom Modal -->
+    <div id="zoomModal" class="fixed inset-0 bg-black/90 z-50 hidden items-center justify-center p-4">
+        <button id="closeZoom" class="absolute top-4 right-4 text-white text-3xl">&times;</button>
+        <img id="zoomImage" class="max-w-full max-h-full object-contain">
+    </div>
+
+    <!-- Individual Download Modal -->
+    <div id="downloadModal" class="fixed inset-0 bg-black/80 z-50 hidden items-center justify-center p-4">
+        <div class="bg-x-darker rounded-2xl max-w-md w-full p-6 fade-in-up">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-bold">📥 個別ダウンロード</h2>
+                <button id="closeDownload" class="text-x-gray hover:text-white text-2xl">&times;</button>
+            </div>
+            <div id="downloadList" class="space-y-2">
+                <!-- Dynamic download buttons -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // State
+        const state = {
+            image: null,
+            splits: 4,
+            aspectRatio: 28, // 9:28
+            splitPositions: [],
+            lineStyle: 'black',
+            lineWidth: 2,
+            gapMode: false,
+            fillStyle: 'blur',
+            fillColor: '#000000',
+            gradColors: ['#1d9bf0', '#7c3aed'],
+            watermark: true,
+            format: 'webp',
+            quality: 92,
+            processedImages: []
+        };
+
+        // DOM Elements
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const dropContent = document.getElementById('dropContent');
+        const loadingContent = document.getElementById('loadingContent');
+        const imageInfo = document.getElementById('imageInfo');
+        const settingsPanel = document.getElementById('settingsPanel');
+        const originalPreview = document.getElementById('originalPreview');
+        const timelinePreview = document.getElementById('timelinePreview');
+        const exportSection = document.getElementById('exportSection');
+        const previewCanvas = document.getElementById('previewCanvas');
+        const ctx = previewCanvas.getContext('2d');
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', init);
+
+        function init() {
+            setupEventListeners();
+            updateSplitSliders();
+        }
+
+        function setupEventListeners() {
+            // Drop zone
+            dropZone.addEventListener('click', () => fileInput.click());
+            dropZone.addEventListener('dragover', handleDragOver);
+            dropZone.addEventListener('dragleave', handleDragLeave);
+            dropZone.addEventListener('drop', handleDrop);
+            fileInput.addEventListener('change', handleFileSelect);
+
+            // Clear image
+            document.getElementById('clearImage').addEventListener('click', clearImage);
+
+            // Split buttons
+            document.querySelectorAll('.split-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    state.splits = parseInt(btn.dataset.splits);
+                    updateButtonGroup('.split-btn', btn);
+                    updateSplitSliders();
+                    processImage();
+                });
+            });
+
+            // Aspect ratio
+            document.getElementById('aspectRatio').addEventListener('input', (e) => {
+                state.aspectRatio = parseInt(e.target.value);
+                document.getElementById('aspectRatioDisplay').textContent = `9:${state.aspectRatio}`;
+                processImage();
+            });
+
+            // Reset splits
+            document.getElementById('resetSplits').addEventListener('click', () => {
+                resetSplitPositions();
+                processImage();
+            });
+
+            // Line style
+            document.querySelectorAll('.line-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    state.lineStyle = btn.dataset.line;
+                    updateButtonGroup('.line-btn', btn);
+                    processImage();
+                });
+            });
+
+            // Line width
+            document.getElementById('lineWidth').addEventListener('input', (e) => {
+                state.lineWidth = parseInt(e.target.value);
+                document.getElementById('lineWidthDisplay').textContent = `${state.lineWidth}px`;
+                processImage();
+            });
+
+            // Gap mode
+            document.getElementById('gapMode').addEventListener('change', (e) => {
+                state.gapMode = e.target.checked;
+                const toggle = document.getElementById('gapToggle');
+                if (state.gapMode) {
+                    toggle.classList.add('translate-x-5');
+                    toggle.parentElement.classList.add('bg-x-blue');
+                    toggle.parentElement.classList.remove('bg-x-border');
+                } else {
+                    toggle.classList.remove('translate-x-5');
+                    toggle.parentElement.classList.remove('bg-x-blue');
+                    toggle.parentElement.classList.add('bg-x-border');
+                }
+                processImage();
+            });
+
+            // Fill style
+            document.querySelectorAll('.fill-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    state.fillStyle = btn.dataset.fill;
+                    updateButtonGroup('.fill-btn', btn);
+                    document.getElementById('solidColorPicker').classList.toggle('hidden', state.fillStyle !== 'solid');
+                    document.getElementById('gradientPicker').classList.toggle('hidden', state.fillStyle !== 'gradient');
+                    processImage();
+                });
+            });
+
+            // Fill colors
+            document.getElementById('fillColor').addEventListener('input', (e) => {
+                state.fillColor = e.target.value;
+                processImage();
+            });
+            document.getElementById('gradColor1').addEventListener('input', (e) => {
+                state.gradColors[0] = e.target.value;
+                processImage();
+            });
+            document.getElementById('gradColor2').addEventListener('input', (e) => {
+                state.gradColors[1] = e.target.value;
+                processImage();
+            });
+
+            // Watermark
+            document.getElementById('watermark').addEventListener('change', (e) => {
+                state.watermark = e.target.checked;
+                const toggle = document.getElementById('watermarkToggle');
+                if (state.watermark) {
+                    toggle.classList.add('translate-x-0');
+                    toggle.classList.remove('-translate-x-5');
+                    toggle.parentElement.classList.add('bg-x-blue');
+                    toggle.parentElement.classList.remove('bg-x-border');
+                } else {
+                    toggle.classList.remove('translate-x-0');
+                    toggle.classList.add('-translate-x-5');
+                    toggle.parentElement.classList.remove('bg-x-blue');
+                    toggle.parentElement.classList.add('bg-x-border');
+                }
+                processImage();
+            });
+
+            // Format
+            document.querySelectorAll('.format-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    state.format = btn.dataset.format;
+                    updateButtonGroup('.format-btn', btn);
+                    processImage();
+                });
+            });
+
+            // Quality
+            document.getElementById('quality').addEventListener('input', (e) => {
+                state.quality = parseInt(e.target.value);
+                document.getElementById('qualityDisplay').textContent = `${state.quality}%`;
+            });
+
+            // Export buttons
+            document.getElementById('downloadAll').addEventListener('click', downloadAllAsZip);
+            document.getElementById('downloadIndividual').addEventListener('click', () => {
+                document.getElementById('downloadModal').classList.remove('hidden');
+                document.getElementById('downloadModal').classList.add('flex');
+            });
+            document.getElementById('shareX').addEventListener('click', shareOnX);
+
+            // Help modal
+            document.getElementById('helpBtn').addEventListener('click', () => {
+                document.getElementById('helpModal').classList.remove('hidden');
+                document.getElementById('helpModal').classList.add('flex');
+            });
+            document.getElementById('closeHelp').addEventListener('click', closeHelpModal);
+            document.getElementById('closeHelpBtn').addEventListener('click', closeHelpModal);
+
+            // Zoom modal
+            document.getElementById('closeZoom').addEventListener('click', () => {
+                document.getElementById('zoomModal').classList.remove('hidden');
+                document.getElementById('zoomModal').classList.add('hidden');
+            });
+
+            // Download modal
+            document.getElementById('closeDownload').addEventListener('click', () => {
+                document.getElementById('downloadModal').classList.remove('flex');
+                document.getElementById('downloadModal').classList.add('hidden');
+            });
+
+            // Close modals on backdrop click
+            ['helpModal', 'zoomModal', 'downloadModal'].forEach(id => {
+                document.getElementById(id).addEventListener('click', (e) => {
+                    if (e.target.id === id) {
+                        e.target.classList.remove('flex');
+                        e.target.classList.add('hidden');
+                    }
+                });
+            });
+        }
+
+        function closeHelpModal() {
+            document.getElementById('helpModal').classList.remove('flex');
+            document.getElementById('helpModal').classList.add('hidden');
+        }
+
+        function updateButtonGroup(selector, activeBtn) {
+            document.querySelectorAll(selector).forEach(btn => {
+                btn.classList.remove('border-x-blue', 'border-2', 'bg-x-blue/10');
+                btn.classList.add('border-x-border', 'border');
+            });
+            activeBtn.classList.remove('border-x-border', 'border');
+            activeBtn.classList.add('border-x-blue', 'border-2', 'bg-x-blue/10');
+        }
+
+        function handleDragOver(e) {
+            e.preventDefault();
+            dropZone.classList.add('drop-zone-active');
+        }
+
+        function handleDragLeave(e) {
+            e.preventDefault();
+            dropZone.classList.remove('drop-zone-active');
+        }
+
+        function handleDrop(e) {
+            e.preventDefault();
+            dropZone.classList.remove('drop-zone-active');
+            const file = e.dataTransfer.files[0];
+            if (file) loadImage(file);
+        }
+
+        function handleFileSelect(e) {
+            const file = e.target.files[0];
+            if (file) loadImage(file);
+        }
+
+        function loadImage(file) {
+            // Validate file type
+            if (!file.type.match(/^image\/(png|jpeg|jpg|webp|gif)$/i)) {
+                alert('❌ 対応していないファイル形式です。\nPNG, JPG, WebP, GIF のいずれかを選択してください。');
+                return;
+            }
+
+            // Validate file size (max 20MB)
+            if (file.size > 20 * 1024 * 1024) {
+                alert('❌ ファイルサイズが大きすぎます。\n20MB以下の画像を選択してください。');
+                return;
+            }
+
+            // Show loading
+            dropContent.classList.add('hidden');
+            loadingContent.classList.remove('hidden');
+
+            const startTime = performance.now();
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const img = new Image();
+                img.onload = () => {
+                    state.image = img;
+
+                    const endTime = performance.now();
+                    const processTime = ((endTime - startTime) / 1000).toFixed(2);
+
+                    // Update UI
+                    loadingContent.classList.add('hidden');
+                    dropContent.classList.remove('hidden');
+
+                    // Show info
+                    document.getElementById('imgSize').textContent = formatFileSize(file.size);
+                    document.getElementById('imgDimensions').textContent = `${img.width} × ${img.height}`;
+                    document.getElementById('processTime').textContent = `${processTime}s`;
+
+                    imageInfo.classList.remove('hidden');
+                    settingsPanel.classList.remove('hidden');
+                    originalPreview.classList.remove('hidden');
+                    timelinePreview.classList.remove('hidden');
+                    exportSection.classList.remove('hidden');
+
+                    resetSplitPositions();
+                    processImage();
+                };
+                img.onerror = () => {
+                    loadingContent.classList.add('hidden');
+                    dropContent.classList.remove('hidden');
+                    alert('❌ 画像の読み込みに失敗しました。');
+                };
+                img.src = e.target.result;
+            };
+            reader.onerror = () => {
+                loadingContent.classList.add('hidden');
+                dropContent.classList.remove('hidden');
+                alert('❌ ファイルの読み込みに失敗しました。');
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function clearImage() {
+            state.image = null;
+            state.processedImages = [];
+            fileInput.value = '';
+
+            imageInfo.classList.add('hidden');
+            settingsPanel.classList.add('hidden');
+            originalPreview.classList.add('hidden');
+            timelinePreview.classList.add('hidden');
+            exportSection.classList.add('hidden');
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+        }
+
+        function updateSplitSliders() {
+            const container = document.getElementById('splitSliders');
+            container.innerHTML = '';
+
+            resetSplitPositions();
+
+            for (let i = 0; i < state.splits - 1; i++) {
+                const div = document.createElement('div');
+                div.innerHTML = `
+                    <div class="flex items-center justify-between mb-1">
+                        <span class="text-sm text-x-gray">分割線 ${i + 1}</span>
+                        <span class="text-x-blue font-mono text-sm" id="splitPos${i}">${state.splitPositions[i]}%</span>
+                    </div>
+                    <input type="range" class="split-slider w-full slider-thumb bg-x-border rounded-lg h-2 appearance-none"
+                           data-index="${i}" min="5" max="95" value="${state.splitPositions[i]}">
+                `;
+                container.appendChild(div);
+            }
+
+            // Add event listeners
+            document.querySelectorAll('.split-slider').forEach(slider => {
+                slider.addEventListener('input', (e) => {
+                    const index = parseInt(e.target.dataset.index);
+                    let value = parseInt(e.target.value);
+
+                    // Constrain to valid range
+                    const minVal = index > 0 ? state.splitPositions[index - 1] + 5 : 5;
+                    const maxVal = index < state.splits - 2 ? state.splitPositions[index + 1] - 5 : 95;
+                    value = Math.max(minVal, Math.min(maxVal, value));
+
+                    e.target.value = value;
+                    state.splitPositions[index] = value;
+                    document.getElementById(`splitPos${index}`).textContent = `${value}%`;
+                    processImage();
+                });
+            });
+        }
+
+        function resetSplitPositions() {
+            state.splitPositions = [];
+            for (let i = 1; i < state.splits; i++) {
+                state.splitPositions.push(Math.round((i / state.splits) * 100));
+            }
+
+            // Update sliders if they exist
+            document.querySelectorAll('.split-slider').forEach((slider, index) => {
+                if (state.splitPositions[index] !== undefined) {
+                    slider.value = state.splitPositions[index];
+                    const display = document.getElementById(`splitPos${index}`);
+                    if (display) display.textContent = `${state.splitPositions[index]}%`;
+                }
+            });
+        }
+
+        function processImage() {
+            if (!state.image) return;
+
+            const img = state.image;
+            const targetWidth = 1080; // Standard width for quality
+            const targetHeight = Math.round(targetWidth * (state.aspectRatio / 9));
+            const splitHeight = Math.round(targetHeight / state.splits);
+
+            // Draw preview
+            const previewScale = Math.min(400 / targetWidth, 600 / targetHeight);
+            previewCanvas.width = targetWidth * previewScale;
+            previewCanvas.height = targetHeight * previewScale;
+
+            // Create full image canvas
+            const fullCanvas = document.createElement('canvas');
+            fullCanvas.width = targetWidth;
+            fullCanvas.height = targetHeight;
+            const fullCtx = fullCanvas.getContext('2d');
+
+            // Fill background
+            fillBackground(fullCtx, targetWidth, targetHeight, img);
+
+            // Calculate image position to center/cover
+            const imgRatio = img.width / img.height;
+            const targetRatio = targetWidth / targetHeight;
+
+            let drawWidth, drawHeight, drawX, drawY;
+
+            if (imgRatio > targetRatio) {
+                // Image is wider - fit height
+                drawHeight = targetHeight;
+                drawWidth = drawHeight * imgRatio;
+                drawX = (targetWidth - drawWidth) / 2;
+                drawY = 0;
+            } else {
+                // Image is taller - fit width
+                drawWidth = targetWidth;
+                drawHeight = drawWidth / imgRatio;
+                drawX = 0;
+                drawY = (targetHeight - drawHeight) / 2;
+            }
+
+            fullCtx.drawImage(img, drawX, drawY, drawWidth, drawHeight);
+
+            // Draw preview
+            ctx.drawImage(fullCanvas, 0, 0, previewCanvas.width, previewCanvas.height);
+
+            // Draw split lines on preview
+            drawSplitLinesPreview();
+
+            // Generate split images
+            generateSplitImages(fullCanvas, targetWidth, targetHeight);
+        }
+
+        function fillBackground(context, width, height, img) {
+            if (state.fillStyle === 'blur') {
+                // Create blurred background
+                const tempCanvas = document.createElement('canvas');
+                tempCanvas.width = width;
+                tempCanvas.height = height;
+                const tempCtx = tempCanvas.getContext('2d');
+
+                // Draw stretched image
+                tempCtx.drawImage(img, 0, 0, width, height);
+                tempCtx.filter = 'blur(30px)';
+                tempCtx.drawImage(tempCanvas, 0, 0);
+                tempCtx.filter = 'none';
+
+                // Darken slightly
+                tempCtx.fillStyle = 'rgba(0,0,0,0.3)';
+                tempCtx.fillRect(0, 0, width, height);
+
+                context.drawImage(tempCanvas, 0, 0);
+            } else if (state.fillStyle === 'solid') {
+                context.fillStyle = state.fillColor;
+                context.fillRect(0, 0, width, height);
+            } else if (state.fillStyle === 'gradient') {
+                const gradient = context.createLinearGradient(0, 0, 0, height);
+                gradient.addColorStop(0, state.gradColors[0]);
+                gradient.addColorStop(1, state.gradColors[1]);
+                context.fillStyle = gradient;
+                context.fillRect(0, 0, width, height);
+            }
+        }
+
+        function drawSplitLinesPreview() {
+            const splitLines = document.getElementById('splitLines');
+            splitLines.innerHTML = '';
+
+            const positions = [0, ...state.splitPositions, 100];
+
+            for (let i = 0; i < state.splits - 1; i++) {
+                const pos = state.splitPositions[i];
+                const line = document.createElement('div');
+                line.className = 'absolute left-0 right-0';
+                line.style.top = `${pos}%`;
+                line.style.height = `${state.lineWidth}px`;
+                line.style.transform = 'translateY(-50%)';
+
+                if (state.lineStyle === 'none') {
+                    line.style.background = 'rgba(255,255,255,0.2)';
+                    line.style.borderTop = '1px dashed rgba(255,255,255,0.5)';
+                } else if (state.lineStyle === 'black') {
+                    line.style.background = '#000';
+                } else if (state.lineStyle === 'white') {
+                    line.style.background = '#fff';
+                } else if (state.lineStyle === 'dotted') {
+                    line.style.background = 'repeating-linear-gradient(90deg, white 0px, white 4px, transparent 4px, transparent 8px)';
+                } else if (state.lineStyle === 'heart') {
+                    line.style.height = '20px';
+                    line.className += ' heart-pattern';
+                } else if (state.lineStyle === 'star') {
+                    line.style.height = '20px';
+                    line.className += ' star-pattern';
+                }
+
+                splitLines.appendChild(line);
+            }
+        }
+
+        function generateSplitImages(fullCanvas, width, height) {
+            state.processedImages = [];
+            const timelineImages = document.getElementById('timelineImages');
+            const downloadList = document.getElementById('downloadList');
+            timelineImages.innerHTML = '';
+            downloadList.innerHTML = '';
+
+            const positions = [0, ...state.splitPositions, 100];
+            const gapOffset = state.gapMode ? 1 : 0; // 2px gap simulation
+
+            for (let i = 0; i < state.splits; i++) {
+                const startPercent = positions[i];
+                const endPercent = positions[i + 1];
+
+                let startY = Math.round((startPercent / 100) * height);
+                let endY = Math.round((endPercent / 100) * height);
+
+                // Adjust for gap mode
+                if (state.gapMode) {
+                    if (i > 0) startY += gapOffset;
+                    if (i < state.splits - 1) endY -= gapOffset;
+                }
+
+                const splitHeight = endY - startY;
+
+                const splitCanvas = document.createElement('canvas');
+                splitCanvas.width = width;
+                splitCanvas.height = splitHeight;
+                const splitCtx = splitCanvas.getContext('2d');
+
+                // Draw the split portion
+                splitCtx.drawImage(fullCanvas, 0, startY, width, splitHeight, 0, 0, width, splitHeight);
+
+                // Draw line at bottom (except for last split)
+                if (i < state.splits - 1 && state.lineStyle !== 'none') {
+                    drawSplitLine(splitCtx, width, splitHeight);
+                }
+
+                // Add watermark
+                if (state.watermark) {
+                    addWatermark(splitCtx, width, splitHeight);
+                }
+
+                // Convert to blob
+                const mimeType = state.format === 'webp' ? 'image/webp' :
+                                state.format === 'jpeg' ? 'image/jpeg' : 'image/png';
+                const quality = state.format === 'png' ? 1 : state.quality / 100;
+
+                const dataUrl = splitCanvas.toDataURL(mimeType, quality);
+                state.processedImages.push({
+                    dataUrl,
+                    filename: `tapvertical_${i + 1}.${state.format}`
+                });
+
+                // Add to timeline preview
+                const imgContainer = document.createElement('div');
+                imgContainer.className = 'preview-item cursor-pointer transition-all aspect-[9/' + Math.round(state.aspectRatio / state.splits) + '] overflow-hidden';
+                imgContainer.innerHTML = `<img src="${dataUrl}" class="w-full h-full object-cover">`;
+                imgContainer.addEventListener('click', () => showZoomModal(dataUrl));
+                timelineImages.appendChild(imgContainer);
+
+                // Add to download list
+                const downloadBtn = document.createElement('button');
+                downloadBtn.className = 'w-full py-3 bg-x-border hover:bg-x-gray/30 rounded-lg text-left px-4 transition-all flex items-center justify-between';
+                downloadBtn.innerHTML = `
+                    <span>📷 画像 ${i + 1}</span>
+                    <span class="text-x-gray text-sm">${formatFileSize(dataUrl.length * 0.75)}</span>
+                `;
+                downloadBtn.addEventListener('click', () => downloadImage(dataUrl, `tapvertical_${i + 1}.${state.format}`));
+                downloadList.appendChild(downloadBtn);
+            }
+        }
+
+        function drawSplitLine(context, width, height) {
+            const lineY = height - state.lineWidth;
+
+            if (state.lineStyle === 'black') {
+                context.fillStyle = '#000';
+                context.fillRect(0, lineY, width, state.lineWidth);
+            } else if (state.lineStyle === 'white') {
+                context.fillStyle = '#fff';
+                context.fillRect(0, lineY, width, state.lineWidth);
+            } else if (state.lineStyle === 'dotted') {
+                context.fillStyle = '#fff';
+                for (let x = 0; x < width; x += 8) {
+                    context.fillRect(x, lineY, 4, state.lineWidth);
+                }
+            } else if (state.lineStyle === 'heart' || state.lineStyle === 'star') {
+                const emoji = state.lineStyle === 'heart' ? '❤️' : '⭐';
+                context.font = '16px Arial';
+                context.textAlign = 'center';
+                for (let x = 10; x < width; x += 24) {
+                    context.fillText(emoji, x, height - 4);
+                }
+            }
+        }
+
+        function addWatermark(context, width, height) {
+            context.save();
+            context.font = '12px Arial';
+            context.fillStyle = 'rgba(255,255,255,0.5)';
+            context.textAlign = 'right';
+            context.textBaseline = 'bottom';
+            context.fillText('Made with TapVertical', width - 10, height - 10);
+            context.restore();
+        }
+
+        function showZoomModal(src) {
+            document.getElementById('zoomImage').src = src;
+            document.getElementById('zoomModal').classList.remove('hidden');
+            document.getElementById('zoomModal').classList.add('flex');
+        }
+
+        function downloadImage(dataUrl, filename) {
+            const link = document.createElement('a');
+            link.href = dataUrl;
+            link.download = filename;
+            link.click();
+        }
+
+        async function downloadAllAsZip() {
+            if (state.processedImages.length === 0) return;
+
+            const btn = document.getElementById('downloadAll');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '⏳ ZIP作成中...';
+            btn.disabled = true;
+
+            try {
+                const zip = new JSZip();
+
+                for (const img of state.processedImages) {
+                    // Convert data URL to blob
+                    const response = await fetch(img.dataUrl);
+                    const blob = await response.blob();
+                    zip.file(img.filename, blob);
+                }
+
+                // Add readme
+                zip.file('README.txt', `TapVertical - 縦分割画像
+
+【投稿方法】
+1. PCブラウザでXを開く
+2. ツイート作成画面で画像を番号順にドラッグ＆ドロップ
+3. 横並びになっていることを確認して投稿！
+
+Made with TapVertical
+https://tapvertical.app`);
+
+                const content = await zip.generateAsync({ type: 'blob' });
+
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(content);
+                link.download = `tapvertical_${state.splits}split_${Date.now()}.zip`;
+                link.click();
+
+                URL.revokeObjectURL(link.href);
+            } catch (error) {
+                alert('❌ ZIP作成に失敗しました: ' + error.message);
+            } finally {
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            }
+        }
+
+        function shareOnX() {
+            const text = encodeURIComponent(`縦長画像で注目度UP！🔥
+
+TapVerticalで簡単作成 ✨
+#TapVertical #縦長画像`);
+            const url = encodeURIComponent('https://tapvertical.app');
+            window.open(`https://twitter.com/intent/tweet?text=${text}&url=${url}`, '_blank');
+        }
+    </script>
+</body>
+</html>
